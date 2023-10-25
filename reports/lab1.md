@@ -42,8 +42,6 @@ sbi版本:RustSBI version 0.3.0-alpha.2, adapting to RISC-V SBI v1.0.0
    > The RISC-V Instruction Set Manual Volume II: Privileged Architecture
    >
    > # rCore-Tutorial-Book 第三版第二章[#](https://rcore-os.cn/rCore-Tutorial-Book-v3/index.html#rcore-tutorial-book)
-   >
-   > 
 
 3. 我独立完成了本次实验除以上方面之外的所有工作，包括代码与文档。 我清楚地知道，从以上方面获得的信息在一定程度上降低了实验难度，可能会影响起评分。
 
