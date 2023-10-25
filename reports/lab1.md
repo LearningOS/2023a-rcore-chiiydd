@@ -1,3 +1,11 @@
+# 实验报告
+
+- 首先我在TaskControlBlock任务控制块中加入taskinfo和task_create_time两个字段，taskinfo来记录任务的信息，task_create_time用来记录任务创建的时间，相应地，在TASK_MANAGER对任务进行初始化时，也要对其进行初始化。
+- 对于TaskManager，获得当前任务信息，更新系统调用次数和任务存活时间，所以分别新增了 get_current_taskinfo、update_taskinfo_syscalltime、update_taskinfo_time三个函数。并将TASK_MANAGER调用这三个函数的过程封装在相对应的同名函数中，以便其他模块使用。
+- 对于syscall模块，在syscall函数中进行更新当前任务的存活时间以及更新当前任务的函数调用次数。对于系统调用sys_task_info的实现，只需调用get_current_taskinfo函数即可获得当前任务的任务信息，并赋值传入参数，返回0即可。
+
+
+
 #  简答作业
 
 ## 1.
