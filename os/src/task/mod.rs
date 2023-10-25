@@ -17,6 +17,8 @@ mod task;
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::syscall::process::{ create_taskinfo, TaskInfo};
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,10 +56,14 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            task_info: create_taskinfo(TaskStatus::UnInit),
+            task_create_time:get_time_ms(),
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
             task.task_status = TaskStatus::Ready;
+            task.task_info.change_status(TaskStatus::Ready);
+            task.task_info.update_time(task.task_create_time);
         }
         TaskManager {
             num_app,
@@ -76,6 +82,7 @@ impl TaskManager {
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
     /// But in ch3, we load apps statically, so the first task is a real app.
+    
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
@@ -102,6 +109,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].task_status = TaskStatus::Exited;
+
     }
 
     /// Find next task to run and return task id.
@@ -122,6 +130,7 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
+            inner.tasks[next].task_info.change_status(TaskStatus::Running);
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -135,6 +144,37 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    /// get current taskinfo 
+    pub fn get_current_taskinfo(&self)->TaskInfo{
+        let  inner=self.inner.exclusive_access();
+        return inner.tasks[inner.current_task].task_info;
+    }
+    /// update syscall time 
+    pub fn update_taskinfo_syscalltime(&self,syscall_id:usize) {
+        let mut inner =self.inner.exclusive_access();
+        let current=inner.current_task;
+        inner.tasks[current].task_info.count_syscall_times(syscall_id, 1);
+    }
+    /// update taskinfo time 
+    pub fn update_taskinfo_time(&self){
+        let mut inner =self.inner.exclusive_access();
+        let current=inner.current_task;
+        let create_time= inner.tasks[current].task_create_time;
+        inner.tasks[current].task_info.update_time(create_time);
+
+    }
+}
+
+
+
+
+/// update the taskinfo syscall_times of current task
+pub fn update_taskinfo_syscalltime(syscall_id :usize ){
+    TASK_MANAGER.update_taskinfo_syscalltime(syscall_id);
+}
+/// update the taskinfo  time of current task
+pub fn update_taskinfo_time(){
+    TASK_MANAGER.update_taskinfo_time();
 }
 
 /// Run the first task in task list.
