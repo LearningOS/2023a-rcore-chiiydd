@@ -262,6 +262,11 @@ impl MemorySet {
             false
         }
     }
+
+    /// unmap the virtual page
+    pub fn unmap(&mut self,vpn: VirtPageNum){
+        self.page_table.unmap(vpn);
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

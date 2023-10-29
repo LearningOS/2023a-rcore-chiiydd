@@ -15,7 +15,9 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{ VirtPageNum, PageTableEntry, MapPermission, VirtAddr, VPNRange};
 use crate::sync::UPSafeCell;
+use crate::syscall::process::TaskInfo;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -140,6 +142,7 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
+            inner.tasks[next].task_info.change_status(TaskStatus::Running);
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -153,6 +156,86 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+       /// get current taskinfo 
+       pub fn get_current_taskinfo(&self)->TaskInfo{
+    
+        let  inner=self.inner.exclusive_access();
+        let current=inner.current_task;
+        inner.tasks[current].task_info.clone()
+    }
+    /// update syscall time 
+    pub fn update_taskinfo_syscalltime(&self,syscall_id:usize) {
+        let mut inner =self.inner.exclusive_access();
+        let current=inner.current_task;
+        inner.tasks[current].task_info.count_syscall_times(syscall_id, 1);
+    }
+    /// update taskinfo time 
+    pub fn update_taskinfo_time(&self){
+        let mut inner =self.inner.exclusive_access();
+        let current=inner.current_task;
+        let create_time= inner.tasks[current].create_time;
+        inner.tasks[current].task_info.update_time(create_time);
+
+    }
+    /// find current pagetable  via vpn
+    pub fn find_current_pagetalbe_pte(&self,vpn:VirtPageNum) ->Option<PageTableEntry>{
+        let  inner=self.inner.exclusive_access();
+        let current=inner.current_task;
+        return inner.tasks[current].memory_set.translate(vpn);
+    }
+    /// insert a new area to current task
+    pub fn current_insert_framed_area(&self,start_va:VirtAddr,end_va:VirtAddr,permission:MapPermission){
+        let mut inner=self.inner.exclusive_access();
+        let current =inner.current_task;
+        inner.tasks[current].memory_set.insert_framed_area(start_va, end_va, permission);
+    }
+
+    /// unmap the area 
+    pub fn unmap_the_area(&self,start_vpn:VirtPageNum,end_vpn:VirtPageNum) ->isize{
+        let mut inner=self.inner.exclusive_access();
+        let current=inner.current_task;
+        let vpns=VPNRange::new(start_vpn,end_vpn);
+        for vpn in vpns{
+            if let Some(pte)=inner.tasks[current].memory_set.translate(vpn){
+                if !pte.is_valid(){
+                    return -1;
+                }
+                
+                inner.tasks[current].memory_set.unmap(vpn);
+            }else{
+                return -1;
+            }
+        }
+        0
+        
+
+    }
+}
+
+///   unmap the area 
+pub  fn unmap_the_area(start_vpn:VirtPageNum,end_vpn:VirtPageNum) ->isize{
+    TASK_MANAGER.unmap_the_area(start_vpn, end_vpn)
+}
+/// insert a new area to current task 
+pub fn  current_insert_framed_area(start_va:VirtAddr,end_va:VirtAddr,permission:MapPermission) {
+    TASK_MANAGER.current_insert_framed_area(start_va, end_va, permission);
+}
+///get current task pagetable pte
+
+pub fn find_current_pagetable_pte(vpn:VirtPageNum)->Option<PageTableEntry>{
+    TASK_MANAGER.find_current_pagetalbe_pte(vpn)
+}
+/// get curent token
+pub fn get_current_user_token() ->usize {
+    TASK_MANAGER.get_current_token()
+}
+/// update the taskinfo syscall_times of current task
+pub fn update_taskinfo_syscalltime(syscall_id :usize ){
+    TASK_MANAGER.update_taskinfo_syscalltime(syscall_id);
+}
+/// update the taskinfo  time of current task
+pub fn update_taskinfo_time(){
+    TASK_MANAGER.update_taskinfo_time();
 }
 
 /// Run the first task in task list.
