@@ -116,16 +116,20 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    // read,write,execute flags are all 0.
+    // the upper bits are not zero
     if (_port& !0x7)!=0{
         return -1;
     }
+    // read,write,execute flags are all 0.
+
     if (_port & 0x7) ==0{
         return -1;
     }
+    // start va is not alined
     if _start&(PAGE_SIZE-1)!=0{
         return -1;
     }
+    // beyond the limit of max virtual address
     if _start>MAXVA{
         return -1;
     }
