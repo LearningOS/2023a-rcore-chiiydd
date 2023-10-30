@@ -71,6 +71,7 @@ pub fn sys_yield() -> isize {
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let current_time=get_time_us();
+    // get the pointers from current user's pagetable
     let _dst_ptrs =translated_byte_buffer(
         get_current_user_token(),
         _ts as * const u8,
@@ -80,6 +81,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         sec:current_time / 1_000_000,
     };
     let src_ptr= time_val as * const TimeVal;
+    //  copy the time value to the destination's pointers
     for (index,dst) in _dst_ptrs.into_iter().enumerate(){
         let unit_length=dst.len();
         unsafe{
