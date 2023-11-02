@@ -200,13 +200,12 @@ impl TaskManager {
                 if !pte.is_valid(){
                     return -1;
                 }
-                
-                inner.tasks[current].memory_set.unmap(vpn);
+                // inner.tasks[current].memory_set.unmap(vpn);
             }else{
                 return -1;
             }
         }
-        0
+        inner.tasks[current].memory_set.unmap_at_once(start_vpn, end_vpn)
         
 
     }

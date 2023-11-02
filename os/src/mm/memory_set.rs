@@ -263,9 +263,40 @@ impl MemorySet {
         }
     }
 
-    /// unmap the virtual page
-    pub fn unmap(&mut self,vpn: VirtPageNum){
-        self.page_table.unmap(vpn);
+    // /// unmap the virtual page
+    // pub fn unmap(&mut self,vpn: VirtPageNum){
+    //     // self.page_table.unmap(vpn);
+    //     let mut index:usize=0;
+    //     let mut remove_index=0;
+    //     for area in self.areas.iter_mut(){
+    //         let start=area.vpn_range.get_start();
+    //         let end=area.vpn_range.get_end();
+    //         if vpn<=end&& vpn>=start{
+    //             area.unmap_one(&mut self.page_table, vpn);
+    //             if area.data_frames.is_empty(){
+    //                 remove_index=index.clone();
+    //             }
+    //         }
+    //         index+=1;
+    //     }
+    //     self.areas.remove(remove_index);
+    // }
+
+    /// unmap the virtual page  v2
+    pub fn unmap_at_once(&mut self,start:VirtPageNum,end:VirtPageNum) ->isize{
+        
+
+        if let Some(index)=self.areas.iter_mut().position(
+            | area|area.vpn_range.get_start()==start && area.vpn_range.get_end()==end)
+        {
+            // println!("area start {}, unmap start {}",self.areas[index].vpn_range.get_start().0,start.0);
+            self.areas[index].unmap(&mut self.page_table);
+            self.areas.remove(index);
+            0
+        }else{
+            -1
+        }
+
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory

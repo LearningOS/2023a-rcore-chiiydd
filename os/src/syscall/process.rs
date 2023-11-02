@@ -127,7 +127,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     if (_port & 0x7) ==0{
         return -1;
     }
-    // start va is not alined
+    // start va is not aligned
     if _start&(PAGE_SIZE-1)!=0{
         return -1;
     }
@@ -146,6 +146,8 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
             }
         }
     }
+    // println!(" MAP:vpn start:{},vpn ends :{}",start_vpn.0,end_vpn.0);
+
     current_insert_framed_area(start_vpn.into(), end_vpn.into(),
     MapPermission::from_bits_truncate((_port<<1)as u8)|MapPermission::U);
     
@@ -157,17 +159,22 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 /// syscall munmap implemention
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap");
+    // beyond MAX virtual address
     if _start>MAXVA{
         return -1;
     }
-    let mut _end=_start+_len;
-    if _end>MAXVA{
-        _end=MAXVA;
+    // hintd  by Liu Zhetan 
+    // start va is not aligned
+    if _start&(PAGE_SIZE-1)!=0{
+        return -1;
     }
 
+
+
     let start_vpn=VirtAddr::from(_start).floor();
-    let end_vpn= VirtAddr::from(_end).ceil();
-    
+    let end_vpn= VirtAddr::from(_start+_len).ceil();
+    // println!("_start va: {},_len {},end virtual address :{}",_start,_len,_end);
+    // println!("UNMAP:vpn start:{},vpn ends :{}",start_vpn.0,end_vpn.0);
     unmap_the_area(start_vpn, end_vpn)
 }
 /// change data segment size
