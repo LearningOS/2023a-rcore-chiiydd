@@ -28,13 +28,17 @@ pub use manager::{fetch_task, TaskManager};
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
+
 pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 pub use manager::add_task;
 pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
-    Processor,
+    Processor,get_current_task_create_time,modify_syscall_times,get_current_task_status,get_current_task_syscall_times,find_current_task_pagetable,
+    current_insert_framed_area,unmap_the_area,set_task_priority,
 };
+
+const BIG_STRIDE:usize=99999;
 /// Suspend the current 'Running' task and run the next task in task list.
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -45,6 +49,9 @@ pub fn suspend_current_and_run_next() {
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
+    
+    task_inner.task_stride=task_inner.task_stride+BIG_STRIDE/task_inner.task_priority;
+
     drop(task_inner);
     // ---- release current PCB
 

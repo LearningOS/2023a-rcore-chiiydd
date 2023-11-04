@@ -1,9 +1,10 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{TRAP_CONTEXT_BASE, MAX_SYSCALL_NUM};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use crate::timer:: get_time_us;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
@@ -24,6 +25,7 @@ pub struct TaskControlBlock {
     inner: UPSafeCell<TaskControlBlockInner>,
 }
 
+
 impl TaskControlBlock {
     /// Get the mutable reference of the inner TCB
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
@@ -33,6 +35,27 @@ impl TaskControlBlock {
     pub fn get_user_token(&self) -> usize {
         let inner = self.inner_exclusive_access();
         inner.memory_set.token()
+    }
+
+}
+impl Eq for TaskControlBlock {
+
+}
+
+impl Ord for TaskControlBlock{
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        other.inner.exclusive_access().task_stride.cmp(&self.inner_exclusive_access().task_stride)
+    }
+    
+}
+impl PartialEq for TaskControlBlock{
+    fn eq(&self, other: &Self) -> bool {
+        self.inner_exclusive_access().task_stride==other.inner_exclusive_access().task_stride
+    }
+}
+impl PartialOrd for TaskControlBlock{
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -68,7 +91,22 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Create time
+    pub create_time:usize,
+
+    /// The numbers of syscall called by task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+
+    ///  The priority of task
+    pub task_priority:usize,
+
+    /// The stride
+    pub task_stride:usize,
+
+
 }
+
 
 impl TaskControlBlockInner {
     /// get the trap context
@@ -84,6 +122,15 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    pub fn get_create_time(&self) ->usize{
+        self.create_time
+    }
+    pub fn count_syscall_times(&mut self,syscall_id:usize){
+        self.syscall_times[syscall_id]+=1;
+    }
+    pub fn set_task_priority(&mut self,_prio:usize){
+        self.task_priority=_prio;
     }
 }
 
@@ -118,6 +165,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    create_time: get_time_us(),
+                    syscall_times: [0;MAX_SYSCALL_NUM],
+                    task_priority:16,
+                    task_stride:0,
                 })
             },
         };
@@ -162,6 +213,50 @@ impl TaskControlBlock {
         // **** release inner automatically
     }
 
+    /// spawn a child process and exec it 
+    pub fn spawn(self: &Arc<Self>,elf_data: &[u8]) -> Arc<Self>{
+        // memory_set with elf program headers/trampoline/trap context/user stack
+        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
+            .unwrap()
+            .ppn();
+
+        let mut parent_inner = self.inner_exclusive_access();
+        let pid_handle=pid_alloc();
+        let kernel_stack=kstack_alloc();
+        let kernel_stack_top=kernel_stack.get_top();
+        let task_control_block:Arc<TaskControlBlock>=Arc::new(TaskControlBlock { 
+            pid: (pid_handle), 
+            kernel_stack: (kernel_stack),
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner{
+                    trap_cx_ppn:trap_cx_ppn,
+                    base_size:parent_inner.base_size,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    task_status:TaskStatus::Ready,
+                    memory_set:memory_set,
+                    parent:Some(Arc::downgrade(self)),
+                    children:Vec::new(),
+                    exit_code:0,
+                    heap_bottom:parent_inner.heap_bottom,
+                    program_brk:parent_inner.program_brk,
+                    create_time:get_time_us(),
+                    syscall_times:[0;MAX_SYSCALL_NUM],
+                    task_priority:2,
+                    task_stride:0,
+                })
+            } });
+        // add child
+        parent_inner.children.push(task_control_block.clone());
+            let trap_ctx=task_control_block.inner_exclusive_access().get_trap_cx();
+            *trap_ctx=TrapContext::app_init_context(entry_point, user_sp, KERNEL_SPACE.exclusive_access().token(),
+             kernel_stack_top, trap_handler as usize);
+
+        task_control_block
+
+
+    } 
     /// parent process fork the child process
     pub fn fork(self: &Arc<Self>) -> Arc<Self> {
         // ---- access parent PCB exclusively
@@ -191,6 +286,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    create_time:get_time_us(),
+                    syscall_times:[0;MAX_SYSCALL_NUM],
+                    task_priority:parent_inner.task_priority,
+                    task_stride:parent_inner.task_stride,
                 })
             },
         });
